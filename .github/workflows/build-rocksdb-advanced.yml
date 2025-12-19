@@ -1,0 +1,208 @@
+name: Build RocksDB Library (Advanced)
+
+# Advanced build with custom configuration options
+# Use this for maximum control over the build process
+
+on:
+  workflow_dispatch:
+    inputs:
+      rocksdb_version:
+        description: 'RocksDB version (tag or commit)'
+        required: true
+        default: 'v10.9.0'  # Check https://github.com/facebook/rocksdb/tags for versions
+      optimization_level:
+        description: 'Optimization level'
+        required: true
+        default: 'Os'
+        type: choice
+        options:
+          - 'Os'  # Optimize for size
+          - 'O3'  # Maximum optimization
+          - 'O2'  # Balanced
+          - 'Oz'  # Aggressive size optimization
+      enable_lto:
+        description: 'Enable Link Time Optimization'
+        required: false
+        type: boolean
+        default: false
+      disable_compression:
+        description: 'Disable compression libraries'
+        required: false
+        type: boolean
+        default: true
+
+jobs:
+  build-custom-rocksdb:
+    name: Custom RocksDB Build
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install base dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential cmake
+
+      - name: Install compression libraries
+        if: ${{ !inputs.disable_compression }}
+        run: |
+          sudo apt-get install -y \
+            libsnappy-dev \
+            zlib1g-dev \
+            libbz2-dev \
+            liblz4-dev \
+            libzstd-dev
+
+      - name: Clone RocksDB
+        run: |
+          git clone --depth 1 --branch ${{ inputs.rocksdb_version }} \
+            https://github.com/facebook/rocksdb.git rocksdb-build
+
+      - name: Configure build flags
+        id: build-config
+        run: |
+          # Base optimization flags
+          CXXFLAGS="-${{ inputs.optimization_level }} -ffunction-sections -fdata-sections -DNDEBUG"
+          LDFLAGS="-Wl,--gc-sections -Wl,--strip-all"
+          
+          # Disable RTTI and exceptions for size
+          CXXFLAGS="$CXXFLAGS -fno-rtti -fno-exceptions"
+          
+          # Add LTO if requested
+          if [ "${{ inputs.enable_lto }}" == "true" ]; then
+            CXXFLAGS="$CXXFLAGS -flto"
+            LDFLAGS="$LDFLAGS -flto"
+          fi
+          
+          echo "CXXFLAGS=$CXXFLAGS" >> $GITHUB_ENV
+          echo "LDFLAGS=$LDFLAGS" >> $GITHUB_ENV
+
+      - name: Build RocksDB
+        run: |
+          cd rocksdb-build
+          
+          # Build configuration
+          MAKE_OPTS=(
+            "static_lib"
+            "-j$(nproc)"
+            "DEBUG_LEVEL=0"
+            "USE_RTTI=0"
+            "PORTABLE=1"
+            "DISABLE_WARNING_AS_ERROR=1"
+            "EXTRA_CXXFLAGS=$CXXFLAGS"
+            "EXTRA_LDFLAGS=$LDFLAGS"
+          )
+          
+          # Disable compression if requested
+          if [ "${{ inputs.disable_compression }}" == "true" ]; then
+            MAKE_OPTS+=("DISABLE_SNAPPY=1")
+            MAKE_OPTS+=("DISABLE_ZLIB=1")
+            MAKE_OPTS+=("DISABLE_BZIP=1")
+            MAKE_OPTS+=("DISABLE_LZ4=1")
+            MAKE_OPTS+=("DISABLE_ZSTD=1")
+          fi
+          
+          echo "Building with: ${MAKE_OPTS[@]}"
+          make "${MAKE_OPTS[@]}"
+          
+          # Additional size reduction
+          strip --strip-unneeded librocksdb.a
+          
+          echo "=== Build Complete ==="
+          ls -lh librocksdb.a
+          echo "Library size: $(du -h librocksdb.a | cut -f1)"
+
+      - name: Analyze library
+        run: |
+          cd rocksdb-build
+          
+          echo "=== Library Analysis ==="
+          echo "File type:"
+          file librocksdb.a
+          
+          echo -e "\nArchive contents (summary):"
+          ar -t librocksdb.a | wc -l
+          echo "Object files in archive"
+          
+          echo -e "\nExported symbols count:"
+          nm --defined-only librocksdb.a | grep -c " T \| D \| B " || echo "0"
+          
+          echo -e "\nTop 10 largest object files:"
+          ar -t librocksdb.a | while read obj; do
+            size=$(ar -p librocksdb.a "$obj" | wc -c)
+            echo "$size $obj"
+          done | sort -rn | head -10
+
+      - name: Package library
+        run: |
+          mkdir -p dist/{lib,include}
+          cp rocksdb-build/librocksdb.a dist/lib/
+          cp -r rocksdb-build/include/rocksdb dist/include/
+          
+          # Create detailed build info
+          cat > dist/lib/BUILD_INFO.md << EOF
+          # RocksDB Build Information
+          
+          - **Version**: ${{ inputs.rocksdb_version }}
+          - **Build Date**: $(date -u +"%Y-%m-%d %H:%M:%S UTC")
+          - **Optimization**: ${{ inputs.optimization_level }}
+          - **LTO Enabled**: ${{ inputs.enable_lto }}
+          - **Compression Disabled**: ${{ inputs.disable_compression }}
+          - **Library Size**: $(du -h dist/lib/librocksdb.a | cut -f1)
+          
+          ## Build Flags
+          \`\`\`
+          CXXFLAGS: $CXXFLAGS
+          LDFLAGS: $LDFLAGS
+          \`\`\`
+          
+          ## Features
+          - RTTI: Disabled
+          - Exceptions: Disabled
+          - Debug Symbols: Stripped
+          EOF
+          
+          cat dist/lib/BUILD_INFO.md
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v3
+        with:
+          name: rocksdb-${{ inputs.rocksdb_version }}-${{ inputs.optimization_level }}
+          path: dist/
+          retention-days: 90
+
+  compare-sizes:
+    name: Size Comparison
+    needs: build-custom-rocksdb
+    runs-on: ubuntu-latest
+    if: github.event_name == 'workflow_dispatch'
+    
+    steps:
+      - name: Download artifact
+        uses: actions/download-artifact@v3
+        with:
+          name: rocksdb-${{ inputs.rocksdb_version }}-${{ inputs.optimization_level }}
+
+      - name: Compare with current library
+        run: |
+          if [ -f lib/librocksdb.a ]; then
+            echo "=== Size Comparison ==="
+            echo "Current library: $(du -h lib/librocksdb.a | cut -f1)"
+            echo "New library: $(du -h lib/librocksdb.a | cut -f1)"
+            
+            old_size=$(stat -f%z lib/librocksdb.a 2>/dev/null || stat -c%s lib/librocksdb.a)
+            new_size=$(stat -f%z lib/librocksdb.a 2>/dev/null || stat -c%s lib/librocksdb.a)
+            diff=$((new_size - old_size))
+            
+            echo "Difference: $diff bytes"
+            
+            if [ $diff -lt 0 ]; then
+              echo "✓ New library is smaller by $((-diff)) bytes"
+            else
+              echo "⚠ New library is larger by $diff bytes"
+            fi
+          else
+            echo "No existing library to compare"
+          fi

@@ -1,0 +1,161 @@
+name: Build RocksDB Library
+
+on:
+  push:
+    branches: [main, master]
+    paths:
+      - '.github/workflows/build-rocksdb.yml'
+      - 'rocksdb-config/**'
+  pull_request:
+    branches: [main, master]
+  workflow_dispatch:
+    inputs:
+      rocksdb_version:
+        description: 'RocksDB version to build'
+        required: false
+        default: 'v10.9.0'
+
+env:
+  ROCKSDB_VERSION: v10.9.0  # Change this to update RocksDB version (e.g., v11.0.0, v10.10.0)
+
+jobs:
+  build-rocksdb:
+    name: Build RocksDB (Size Optimized)
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            build-essential \
+            cmake
+
+      - name: Cache RocksDB source
+        id: cache-rocksdb-source
+        uses: actions/cache@v3
+        with:
+          path: rocksdb-source
+          key: rocksdb-source-${{ env.ROCKSDB_VERSION }}
+
+      - name: Download RocksDB source
+        if: steps.cache-rocksdb-source.outputs.cache-hit != 'true'
+        run: |
+          git clone --depth 1 --branch ${{ github.event.inputs.rocksdb_version || env.ROCKSDB_VERSION }} \
+            https://github.com/facebook/rocksdb.git rocksdb-source
+
+      - name: Build RocksDB with size optimizations
+        run: |
+          cd rocksdb-source
+          
+          # Size-optimized build flags
+          export EXTRA_CXXFLAGS="-Os -ffunction-sections -fdata-sections -fno-exceptions -fno-rtti -DNDEBUG"
+          export EXTRA_LDFLAGS="-Wl,--gc-sections -Wl,--strip-all"
+          
+          # Build static library with minimal features
+          make static_lib -j$(nproc) \
+            DEBUG_LEVEL=0 \
+            USE_RTTI=0 \
+            DISABLE_WARNING_AS_ERROR=1 \
+            PORTABLE=1 \
+            FORCE_SSE42=0 \
+            DISABLE_SNAPPY=1 \
+            DISABLE_ZLIB=1 \
+            DISABLE_BZIP=1 \
+            DISABLE_LZ4=1 \
+            DISABLE_ZSTD=1 \
+            EXTRA_CXXFLAGS="$EXTRA_CXXFLAGS" \
+            EXTRA_LDFLAGS="$EXTRA_LDFLAGS"
+          
+          # Strip the library
+          strip --strip-unneeded librocksdb.a
+          
+          # Show size
+          echo "Library size:"
+          ls -lh librocksdb.a
+          du -h librocksdb.a
+
+      - name: Copy library to workspace
+        run: |
+          mkdir -p lib
+          cp rocksdb-source/librocksdb.a lib/
+          
+      - name: Copy headers to workspace
+        run: |
+          mkdir -p include
+          cp -r rocksdb-source/include/rocksdb include/
+
+      - name: Create build info
+        run: |
+          cat > lib/build-info.txt << EOF
+          RocksDB Version: ${{ github.event.inputs.rocksdb_version || env.ROCKSDB_VERSION }}
+          Build Date: $(date -u +"%Y-%m-%d %H:%M:%S UTC")
+          Build Type: Size Optimized (static)
+          Compiler Flags: -Os -ffunction-sections -fdata-sections -fno-exceptions -fno-rtti
+          Features Disabled: RTTI, Exceptions, All Compression (Snappy, Zlib, Bzip2, LZ4, Zstd)
+          Library Size: $(du -h lib/librocksdb.a | cut -f1)
+          EOF
+          cat lib/build-info.txt
+
+      - name: Upload library artifact
+        uses: actions/upload-artifact@v3
+        with:
+          name: librocksdb-${{ env.ROCKSDB_VERSION }}-size-optimized
+          path: |
+            lib/librocksdb.a
+            lib/build-info.txt
+            include/
+          retention-days: 30
+
+      - name: Create release (on tag)
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: softprops/action-gh-release@v1
+        with:
+          files: |
+            lib/librocksdb.a
+            lib/build-info.txt
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  test-library:
+    name: Test Built Library
+    needs: build-rocksdb
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Download library artifact
+        uses: actions/download-artifact@v3
+        with:
+          name: librocksdb-${{ env.ROCKSDB_VERSION }}-size-optimized
+
+      - name: Verify library structure
+        run: |
+          echo "Checking library file:"
+          ls -lh lib/librocksdb.a
+          file lib/librocksdb.a
+          
+          echo -e "\nBuild info:"
+          cat lib/build-info.txt
+          
+          echo -e "\nChecking symbols:"
+          nm lib/librocksdb.a | grep -c "rocksdb" || echo "Symbol count check"
+
+      - name: Build Rust project
+        run: cargo build --release
+
+      - name: Run tests
+        run: cargo test --release
+
+      - name: Check binary size
+        run: |
+          echo "Final library sizes:"
+          find target/release -name "*.rlib" -o -name "*.a" | xargs ls -lh
