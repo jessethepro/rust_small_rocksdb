@@ -5,7 +5,7 @@
 set -e
 
 # Configuration
-ROCKSDB_VERSION="${1:-10.9.0}"
+ROCKSDB_VERSION="${1:-v10.7.5}"
 OPTIMIZATION="${2:-Os}"
 ROCKSDB_DIR="rocksdb-build"
 OUTPUT_DIR="$(pwd)/lib"

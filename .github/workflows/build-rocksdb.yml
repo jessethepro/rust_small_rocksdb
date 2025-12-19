@@ -16,7 +16,7 @@ on:
         default: 'v10.9.0'
 
 env:
-  ROCKSDB_VERSION: 10.9.0  # Change this to update RocksDB version (e.g., 11.0.0, 10.10.0)
+  ROCKSDB_VERSION: v10.7.5  # Change this to update RocksDB version (e.g., v10.7.5, v9.11.2)
 
 jobs:
   build-rocksdb:

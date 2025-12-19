@@ -9,7 +9,7 @@ on:
       rocksdb_version:
         description: 'RocksDB version (tag or commit)'
         required: true
-        default: '10.9.0'  # Check https://github.com/facebook/rocksdb/tags for versions
+        default: 'v10.7.5'  # Check https://github.com/facebook/rocksdb/tags for versions
       optimization_level:
         description: 'Optimization level'
         required: true
