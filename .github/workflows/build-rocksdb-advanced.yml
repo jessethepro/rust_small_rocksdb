@@ -9,7 +9,7 @@ on:
       rocksdb_version:
         description: 'RocksDB version (tag or commit)'
         required: true
-        default: 'v10.9.0'  # Check https://github.com/facebook/rocksdb/tags for versions
+        default: '10.9.0'  # Check https://github.com/facebook/rocksdb/tags for versions
       optimization_level:
         description: 'Optimization level'
         required: true
@@ -169,7 +169,7 @@ jobs:
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
-          name: rocksdb-${{ inputs.rocksdb_version }}-${{ inputs.optimization_level }}
+          name: rocksdb-v${{ inputs.rocksdb_version }}-${{ inputs.optimization_level }}
           path: dist/
           retention-days: 90
 
@@ -183,7 +183,7 @@ jobs:
       - name: Download artifact
         uses: actions/download-artifact@v4
         with:
-          name: rocksdb-${{ inputs.rocksdb_version }}-${{ inputs.optimization_level }}
+          name: rocksdb-v${{ inputs.rocksdb_version }}-${{ inputs.optimization_level }}
 
       - name: Compare with current library
         run: |
