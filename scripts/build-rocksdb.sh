@@ -34,7 +34,7 @@ fi
 cd "$ROCKSDB_DIR"
 
 # Build flags for size optimization
-export EXTRA_CXXFLAGS="-$OPTIMIZATION -ffunction-sections -fdata-sections -fno-exceptions -fno-rtti -DNDEBUG"
+export EXTRA_CXXFLAGS="-$OPTIMIZATION -ffunction-sections -fdata-sections -fno-rtti -DNDEBUG"
 export EXTRA_LDFLAGS="-Wl,--gc-sections -Wl,--strip-all"
 
 echo "Building RocksDB..."

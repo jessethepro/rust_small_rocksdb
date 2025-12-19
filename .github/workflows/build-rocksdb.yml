@@ -52,7 +52,7 @@ jobs:
           cd rocksdb-source
           
           # Size-optimized build flags
-          export EXTRA_CXXFLAGS="-Os -ffunction-sections -fdata-sections -fno-exceptions -fno-rtti -DNDEBUG"
+          export EXTRA_CXXFLAGS="-Os -ffunction-sections -fdata-sections -fno-rtti -DNDEBUG"
           export EXTRA_LDFLAGS="-Wl,--gc-sections -Wl,--strip-all"
           
           # Build static library with minimal features
@@ -94,8 +94,8 @@ jobs:
           RocksDB Version: ${{ github.event.inputs.rocksdb_version || env.ROCKSDB_VERSION }}
           Build Date: $(date -u +"%Y-%m-%d %H:%M:%S UTC")
           Build Type: Size Optimized (static)
-          Compiler Flags: -Os -ffunction-sections -fdata-sections -fno-exceptions -fno-rtti
-          Features Disabled: RTTI, Exceptions, All Compression (Snappy, Zlib, Bzip2, LZ4, Zstd)
+          Compiler Flags: -Os -ffunction-sections -fdata-sections -fno-rtti
+          Features Disabled: RTTI, All Compression (Snappy, Zlib, Bzip2, LZ4, Zstd)
           Library Size: $(du -h lib/librocksdb.a | cut -f1)
           EOF
           cat lib/build-info.txt

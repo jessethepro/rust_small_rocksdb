@@ -67,8 +67,8 @@ jobs:
           CXXFLAGS="-${{ inputs.optimization_level }} -ffunction-sections -fdata-sections -DNDEBUG"
           LDFLAGS="-Wl,--gc-sections -Wl,--strip-all"
           
-          # Disable RTTI and exceptions for size
-          CXXFLAGS="$CXXFLAGS -fno-rtti -fno-exceptions"
+          # Disable RTTI for size
+          CXXFLAGS="$CXXFLAGS -fno-rtti"
           
           # Add LTO if requested
           if [ "${{ inputs.enable_lto }}" == "true" ]; then
