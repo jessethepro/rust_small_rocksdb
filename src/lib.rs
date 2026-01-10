@@ -25,7 +25,7 @@ mod ffi;
 mod iterator;
 mod options;
 
-pub use db::DB;
+pub use db::{ColumnFamilyHandle, DB};
 pub use error::{Error, Result};
 pub use iterator::{DBIterator, DBIteratorAdapter, Direction};
 pub use options::Options;

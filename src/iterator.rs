@@ -18,6 +18,7 @@ pub enum Direction {
 ///
 /// This iterator provides a way to traverse the database in sorted key order.
 /// The iterator borrows the database and read options for its lifetime.
+#[must_use = "Iterators are lazy and do nothing unless consumed"]
 pub struct DBIterator<'a> {
     inner: NonNull<ffi::rocksdb_iterator_t>,
     _phantom: PhantomData<&'a ()>,
@@ -54,6 +55,13 @@ impl<'a> DBIterator<'a> {
     /// Position the iterator at the first key greater than or equal to the target
     pub fn seek<K: AsRef<[u8]>>(&mut self, key: K) {
         let key = key.as_ref();
+
+        // Debug assertion: validate key length
+        debug_assert!(
+            key.len() < isize::MAX as usize,
+            "Seek key length exceeds maximum safe size"
+        );
+
         unsafe {
             ffi::rocksdb_iter_seek(self.inner.as_ptr(), key.as_ptr() as *const i8, key.len());
         }
@@ -62,6 +70,13 @@ impl<'a> DBIterator<'a> {
     /// Position the iterator at the first key less than or equal to the target
     pub fn seek_for_prev<K: AsRef<[u8]>>(&mut self, key: K) {
         let key = key.as_ref();
+
+        // Debug assertion: validate key length
+        debug_assert!(
+            key.len() < isize::MAX as usize,
+            "Seek key length exceeds maximum safe size"
+        );
+
         unsafe {
             ffi::rocksdb_iter_seek_for_prev(
                 self.inner.as_ptr(),
@@ -96,6 +111,13 @@ impl<'a> DBIterator<'a> {
         unsafe {
             let mut klen: usize = 0;
             let key_ptr = ffi::rocksdb_iter_key(self.inner.as_ptr(), &mut klen);
+
+            // Debug assertion: if we have a valid iterator, pointer should be valid
+            debug_assert!(
+                key_ptr.is_null() || klen == 0 || !key_ptr.is_null(),
+                "Iterator returned null pointer with non-zero length"
+            );
+
             if key_ptr.is_null() {
                 None
             } else {
@@ -115,6 +137,13 @@ impl<'a> DBIterator<'a> {
         unsafe {
             let mut vlen: usize = 0;
             let value_ptr = ffi::rocksdb_iter_value(self.inner.as_ptr(), &mut vlen);
+
+            // Debug assertion: if we have a valid iterator, pointer should be valid
+            debug_assert!(
+                value_ptr.is_null() || vlen == 0 || !value_ptr.is_null(),
+                "Iterator returned null pointer with non-zero length"
+            );
+
             if value_ptr.is_null() {
                 None
             } else {
@@ -134,6 +163,7 @@ impl<'a> DBIterator<'a> {
     }
 
     /// Check for any error that occurred during iteration
+    #[must_use = "Iterator errors should be checked to detect I/O failures"]
     pub fn status(&self) -> Result<()> {
         unsafe {
             let mut err: *mut i8 = ptr::null_mut();
@@ -150,9 +180,10 @@ impl<'a> DBIterator<'a> {
 
 impl<'a> Drop for DBIterator<'a> {
     fn drop(&mut self) {
-        unsafe {
+        // Catch panics to prevent double-panic during unwinding
+        let _ = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| unsafe {
             ffi::rocksdb_iter_destroy(self.inner.as_ptr());
-        }
+        }));
     }
 }
 
@@ -160,6 +191,7 @@ impl<'a> Drop for DBIterator<'a> {
 ///
 /// This is useful for iterating over the database in a Rust-idiomatic way
 /// using a for loop.
+#[must_use = "Iterators are lazy and do nothing unless consumed"]
 pub struct DBIteratorAdapter<'a> {
     inner: DBIterator<'a>,
     direction: Direction,

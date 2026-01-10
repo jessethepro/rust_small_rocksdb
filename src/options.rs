@@ -4,6 +4,7 @@ use crate::ffi;
 use std::ptr::NonNull;
 
 /// Options for opening a RocksDB database
+#[must_use = "Options must be used to open a database"]
 pub struct Options {
     inner: NonNull<ffi::rocksdb_options_t>,
 }
@@ -49,9 +50,10 @@ impl Default for Options {
 
 impl Drop for Options {
     fn drop(&mut self) {
-        unsafe {
+        // Catch panics to prevent double-panic during unwinding
+        let _ = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| unsafe {
             ffi::rocksdb_options_destroy(self.inner.as_ptr());
-        }
+        }));
     }
 }
 

@@ -2,6 +2,14 @@
 name = "rust_small_rocksdb"
 version = "0.1.0"
 edition = "2024"
+authors = ["Jesse <jessethepro@example.com>"]
+description = "Minimal, safe Rust bindings for RocksDB with column family support"
+license = "MIT OR Apache-2.0"
+repository = "https://github.com/jessethepro/rust_small_rocksdb"
+documentation = "https://docs.rs/rust_small_rocksdb"
+readme = "README.md"
+keywords = ["rocksdb", "database", "embedded", "key-value", "storage"]
+categories = ["database", "embedded", "api-bindings"]
 
 [lib]
 crate-type = ["staticlib", "rlib"]

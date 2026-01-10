@@ -32,6 +32,26 @@ pub struct rocksdb_iterator_t {
     _private: [u8; 0],
 }
 
+#[repr(C)]
+pub struct rocksdb_column_family_handle_t {
+    _private: [u8; 0],
+}
+
+// Compile-time assertions to ensure opaque types are zero-sized
+// This verifies that the types are truly opaque and don't accidentally grow
+const _: () = {
+    const fn assert_zero_sized<T>() {
+        assert!(std::mem::size_of::<T>() == 0);
+    }
+
+    assert_zero_sized::<rocksdb_t>();
+    assert_zero_sized::<rocksdb_options_t>();
+    assert_zero_sized::<rocksdb_readoptions_t>();
+    assert_zero_sized::<rocksdb_writeoptions_t>();
+    assert_zero_sized::<rocksdb_iterator_t>();
+    assert_zero_sized::<rocksdb_column_family_handle_t>();
+};
+
 // External functions from RocksDB C API
 unsafe extern "C" {
     // Database operations
@@ -116,4 +136,69 @@ unsafe extern "C" {
 
     // Memory management
     pub fn rocksdb_free(ptr: *mut c_void);
+
+    // Column family operations
+    pub fn rocksdb_create_column_family(
+        db: *mut rocksdb_t,
+        column_family_options: *const rocksdb_options_t,
+        column_family_name: *const c_char,
+        errptr: *mut *mut c_char,
+    ) -> *mut rocksdb_column_family_handle_t;
+
+    pub fn rocksdb_drop_column_family(
+        db: *mut rocksdb_t,
+        handle: *mut rocksdb_column_family_handle_t,
+        errptr: *mut *mut c_char,
+    );
+
+    pub fn rocksdb_column_family_handle_destroy(handle: *mut rocksdb_column_family_handle_t);
+
+    // Column family read/write operations
+    pub fn rocksdb_put_cf(
+        db: *mut rocksdb_t,
+        options: *const rocksdb_writeoptions_t,
+        column_family: *mut rocksdb_column_family_handle_t,
+        key: *const c_char,
+        keylen: size_t,
+        val: *const c_char,
+        vallen: size_t,
+        errptr: *mut *mut c_char,
+    );
+
+    pub fn rocksdb_get_cf(
+        db: *mut rocksdb_t,
+        options: *const rocksdb_readoptions_t,
+        column_family: *mut rocksdb_column_family_handle_t,
+        key: *const c_char,
+        keylen: size_t,
+        vallen: *mut size_t,
+        errptr: *mut *mut c_char,
+    ) -> *mut c_char;
+
+    pub fn rocksdb_delete_cf(
+        db: *mut rocksdb_t,
+        options: *const rocksdb_writeoptions_t,
+        column_family: *mut rocksdb_column_family_handle_t,
+        key: *const c_char,
+        keylen: size_t,
+        errptr: *mut *mut c_char,
+    );
+
+    // Open database with column families
+    pub fn rocksdb_open_column_families(
+        options: *const rocksdb_options_t,
+        name: *const c_char,
+        num_column_families: c_int,
+        column_family_names: *const *const c_char,
+        column_family_options: *const *const rocksdb_options_t,
+        column_family_handles: *mut *mut rocksdb_column_family_handle_t,
+        errptr: *mut *mut c_char,
+    ) -> *mut rocksdb_t;
+
+    pub fn rocksdb_list_column_families(
+        options: *const rocksdb_options_t,
+        name: *const c_char,
+        lencf: *mut size_t,
+        errptr: *mut *mut c_char,
+    ) -> *mut *mut c_char;
 }
